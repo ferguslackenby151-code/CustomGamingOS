@@ -102,6 +102,10 @@ RUN mkdir -p /etc/flatpak/remotes.d \
  && curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
         https://flathub.org
 
+# Copy and execute the background flatpak storefront provisioner
+COPY setup-stores.sh /tmp/setup-stores.sh
+RUN chmod +x /tmp/setup-stores.sh && /tmp/setup-stores.sh --system --foreground && rm /tmp/setup-stores.sh
+
 # ------------------------------------------------------------------------------
 # 4. Local-only user accounts (Locks out online directory integrations)
 # ------------------------------------------------------------------------------

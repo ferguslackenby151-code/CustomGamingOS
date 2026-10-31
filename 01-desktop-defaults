@@ -1,5 +1,5 @@
 [org/gnome/shell]
-enabled-extensions=['dash-to-panel@://github.com', 'arcmenu@arcmenu.com', 'appindicatorsupport@://gmail.com']
+enabled-extensions=['dash-to-panel@jderose9.github.com', 'appindicatorsupport@://gmail.com']
 favorite-apps=['unified-store.desktop']
 
 [org/gnome/shell/extensions/dash-to-panel]

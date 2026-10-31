@@ -17,7 +17,7 @@ LABEL org.opencontainers.image.title="silverblue-cachyos" \
       org.opencontainers.image.description="uBlue Silverblue with CachyOS (BORE) kernel and gaming stack"
 
 # ------------------------------------------------------------------------------
-# 1. Repositories: RPM Fusion (Steam is in nonfree) + CachyOS kernel COPR
+# 1. Repositories: Fetch the CachyOS kernel repo directly
 # ------------------------------------------------------------------------------
 RUN <<'EOF'
 set -euxo pipefail
@@ -25,12 +25,7 @@ set -euxo pipefail
 # Discover the numeric version inside the container environment
 NUMERIC_VERSION=$(rpm -E %fedora)
 
-if ! rpm -q rpmfusion-free-release rpmfusion-nonfree-release >/dev/null 2>&1; then
-    rpm-ostree install \
-        "https://rpmfusion.org{NUMERIC_VERSION}.noarch.rpm" \
-        "https://rpmfusion.org{NUMERIC_VERSION}.noarch.rpm"
-fi
-
+# Fetch the CachyOS kernel repo using the correct numeric variable layout
 curl -fsSL --retry 3 \
     -o /etc/yum.repos.d/bieszczaders-kernel-cachyos.repo \
     "https://fedorainfracloud.org{NUMERIC_VERSION}/bieszczaders-kernel-cachyos-fedora-${NUMERIC_VERSION}.repo"
@@ -42,16 +37,20 @@ EOF
 RUN <<'EOF'
 set -euxo pipefail
 
+# Let kernel scriptlets run inside a container build.
 rpm-ostree cliwrap install-to-root /
 
+# Remove only the stock kernel packages that are actually installed.
 REMOVE=""
 for p in kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra; do
     if rpm -q --quiet "$p"; then REMOVE="$REMOVE $p"; fi
 done
 
+# shellcheck disable=SC2086
 rpm-ostree override remove $REMOVE --install kernel-cachyos
 EOF
 
+# Build initramfs during container build and verify kernel configuration.
 RUN <<'EOF'
 set -euxo pipefail
 
@@ -74,6 +73,7 @@ DRACUT_NO_XATTR=1 dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v
 chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
 EOF
 
+# BORE is the default scheduler in kernel-cachyos; pin the sysctl explicitly.
 COPY <<'EOF' /usr/lib/sysctl.d/70-bore.conf
 # BORE (Burst-Oriented Response Enhancer) scheduler
 kernel.sched_bore = 1
@@ -93,17 +93,19 @@ RUN rpm-ostree install --idempotent \
         gnome-shell-extension-arc-menu \
         gnome-shell-extension-appindicator
 
+# System-wide Flathub remote configuration
 RUN mkdir -p /etc/flatpak/remotes.d \
  && curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
         https://flathub.org
 
+# Copy and execute the background flatpak storefront provisioner
 COPY unified-store.sh /tmp/unified-store.sh
 COPY unified-store.desktop /tmp/unified-store.desktop
 COPY setup-stores.sh /tmp/setup-stores.sh
 RUN chmod +x /tmp/setup-stores.sh && /tmp/setup-stores.sh --system --foreground && rm /tmp/setup-stores.sh
 
 # ------------------------------------------------------------------------------
-# 4. Local-only user accounts
+# 4. Local-only user accounts (Locks out online directory integrations)
 # ------------------------------------------------------------------------------
 RUN <<'EOF'
 set -euxo pipefail
@@ -112,8 +114,9 @@ systemctl mask sssd.service realmd.service
 EOF
 
 # ------------------------------------------------------------------------------
-# 5. Zero online telemetry
+# 5. Zero online telemetry (Completely isolates your users from data tracking)
 # ------------------------------------------------------------------------------
+# 5a. Disable DNF/rpm-ostree repo beacon hits and automatic crash reporters
 RUN <<'EOF'
 set -euxo pipefail
 sed -i '/^countme=/d' /etc/yum.repos.d/*.repo
@@ -123,11 +126,13 @@ systemctl mask \
     abrt-xorg.service abrt-vmcore.service abrt-pstoreoops.service
 EOF
 
+# 5b. Force NetworkManager to check connection state completely locally
 COPY <<'EOF' /etc/NetworkManager/conf.d/99-no-connectivity-check.conf
 [connectivity]
 enabled=false
 EOF
 
+# 5c. Absolute GNOME privacy lockdown (Stops problem reporting, geo-tracking, and cloud linking)
 COPY <<'EOF' /etc/dconf/profile/user
 user-db:user
 system-db:local
@@ -152,11 +157,12 @@ COPY <<'EOF' /etc/dconf/db/local.d/locks/00-no-telemetry
 /org/gnome/online-accounts/whitelisted-providers
 EOF
 
+# Inject your custom Windows-style taskbar and single app store configuration
 COPY 01-desktop-defaults /etc/dconf/db/local.d/01-desktop-defaults
 RUN dconf update
 
 # ------------------------------------------------------------------------------
-# 6. Finalise
+# 6. Finalise image layer structure
 # ------------------------------------------------------------------------------
 RUN <<'EOF'
 set -euxo pipefail

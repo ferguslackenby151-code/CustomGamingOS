@@ -28,7 +28,8 @@ readonly APPS=(
     "com.heroicgameslauncher.hgl"   # Heroic Games Launcher
     "net.lutris.Lutris"             # Lutris
     "com.usebottles.bottles"        # Bottles
-    "net.davidotek.pupgui2"         # ProtonUp-Qt (Safe Proton-GE Compatibility Manager)
+    "net.davidotek.pupgui2"         # ProtonUp-Qt (Safe Proton Management Engine)
+    "com.valvesoftware.Steam"       # Steam Client Launcher Core
 )
 
 # Tunables (override from the environment if needed)

@@ -13,74 +13,53 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.event.repository.name }}
   FEDORA_VERSION: "latest"
-  ISO_ROOTFS: ext4
-  BUILDER_IMAGE: quay.io/centos-bootc/bootc-image-builder:latest
 
 jobs:
   build_push:
-    name: Build, push and sign image
-    if: github.ref == 'refs/heads/main'
+    name: Compile Core OS and Deploy to Registry
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
-    outputs:
-      image: ${{ steps.vars.outputs.image }}
-      digest: ${{ steps.build.outputs.digest }}
-      has_secret: ${{ steps.check_secret.outputs.has_secret }}
 
     steps:
-      - name: Checkout
+      - name: Checkout Code Workspace
         uses: actions/checkout@v4
 
-      - name: Check signing secret status
-        id: check_secret
-        env:
-          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
-        run: |
-          if [ -z "$COSIGN_PRIVATE_KEY" ]; then
-            echo "SIGNING_SECRET is empty. Signature stages will safely bypass."
-            echo "has_secret=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_secret=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Free disk space
+      - name: Free Runner Disk Space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
                       /opt/hostedtoolcache/CodeQL /usr/local/share/boost
           sudo docker image prune --all --force >/dev/null
           df -h /
 
-      - name: Compute image name
+      - name: Compute Image Target Name
         id: vars
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           name="${IMAGE_NAME,,}"
           echo "image=${REGISTRY}/${owner}/${name}" >> "$GITHUB_OUTPUT"
 
-      - name: Image metadata (tags and labels)
+      - name: Extract Metadata Tags and Labels
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.vars.outputs.image }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value={{date 'YYYYMMDD'}}
-            type=sha,format=short
+            type=raw,value=latest
 
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx Environment
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to GitHub Packages Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Compile OS and Push Container Registry Package
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -93,106 +72,3 @@ jobs:
             FEDORA_VERSION=${{ env.FEDORA_VERSION }}
           provenance: false
           sbom: false
-
-      - name: Install cosign
-        if: steps.check_secret.outputs.has_secret == 'true'
-        uses: sigstore/cosign-installer@v3.7.0
-        with:
-          cosign-release: v2.4.1
-
-      - name: Sign image (by digest)
-        if: steps.check_secret.outputs.has_secret == 'true'
-        env:
-          IMAGE: ${{ steps.vars.outputs.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-          COSIGN_EXPERIMENTAL: "false"
-        run: |
-          cosign sign -y --key env://COSIGN_PRIVATE_KEY "${IMAGE}@${DIGEST}"
-
-      - name: Verify signature with cosign.pub
-        if: steps.check_secret.outputs.has_secret == 'true' && hashFiles('cosign.pub') != ''
-        env:
-          IMAGE: ${{ steps.vars.outputs.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          cosign verify --key cosign.pub "${IMAGE}@${DIGEST}" >/dev/null
-          echo "Signature on ${IMAGE}@${DIGEST} verified against cosign.pub"
-
-  build_iso:
-    name: Build bootable ISO
-    needs: build_push
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
-          sudo docker image prune --all --force >/dev/null
-          df -h /
-
-      - name: Pull image as root
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-          DIGEST: ${{ needs.build_push.outputs.digest }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          printf '%s' "$GHCR_TOKEN" | sudo podman login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin
-          sudo podman pull "${IMAGE}@${DIGEST}"
-
-      - name: Write installer config
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-        run: |
-          cat > iso-config.toml <<EOF
-          [customizations.installer.kickstart]
-          contents = """
-          graphical
-          %post
-          bootc switch --mutate-in-place --transport registry ${IMAGE}:latest
-          %end
-          """
-          EOF
-          cat iso-config.toml
-
-      - name: Build Anaconda ISO
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-          DIGEST: ${{ needs.build_push.outputs.digest }}
-        run: |
-          mkdir -p output
-          sudo podman run --rm --privileged --pull=newer \
-            --security-opt label=type:unconfined_t \
-            -v "$PWD/iso-config.toml:/config.toml:ro" \
-            -v "$PWD/output:/output" \
-            -v /var/lib/containers/storage:/var/lib/containers/storage \
-            "$BUILDER_IMAGE" \
-            --type anaconda-iso \
-            --rootfs "$ISO_ROOTFS" \
-            --use-librepo=True \
-            "${IMAGE}@${DIGEST}"
-
-      - name: Checksum
-        run: |
-          sudo chown -R "$(id -u):$(id -g)" output
-          cd output/bootiso
-          sha256sum install.iso | tee install.iso.sha256
-          ls -lh
-
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.event.repository.name }}-iso-${{ github.run_number }}
-          path: |
-            output/bootiso/install.iso
-            output/bootiso/install.iso.sha256
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
-

@@ -2,7 +2,7 @@
 # Universal Blue custom image
 #   Fedora Silverblue + CachyOS kernel (BORE scheduler)
 #   + Windows-Style Desktop Environment & Unified Store Layout
-#   + gamemode / mangohud / steam / flatpak
+#   + gamemode / mangohud / flatpak
 #   + local-only accounts, Fedora/GNOME/rpm-ostree telemetry disabled
 # ==============================================================================
 
@@ -57,12 +57,10 @@ EOF
 RUN rpm-ostree install --idempotent \
         gamemode \
         mangohud \
-        steam \
         flatpak \
         zenity \
         gnome-extensions-app \
         gnome-shell-extension-dash-to-panel \
-        gnome-shell-extension-arc-menu \
         gnome-shell-extension-appindicator
 
 RUN mkdir -p /etc/flatpak/remotes.d \
@@ -142,5 +140,6 @@ ostree container commit
 EOF
 
 RUN if command -v bootc >/dev/null 2>&1; then bootc container lint; fi
+
 
 

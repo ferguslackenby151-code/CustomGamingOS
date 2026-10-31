@@ -1,21 +1,19 @@
 # ==============================================================================
 # Universal Blue custom image
-#   Fedora Silverblue 41 + CachyOS kernel (BORE scheduler)
+#   Fedora Silverblue + CachyOS kernel (BORE scheduler)
+#   + Windows-Style Desktop Environment & Unified Store Layout
 #   + gamemode / mangohud / steam / flatpak
 #   + local-only accounts, Fedora/GNOME/rpm-ostree telemetry disabled
-#
-# Build:
-#   sudo podman build --build-arg FEDORA_VERSION=41 \
-#        -t localhost/silverblue-cachyos:41 .
 # ==============================================================================
 
+# Point to the active stable stream release tag
 ARG BASE_IMAGE=ghcr.io/ublue-os/silverblue-main
-ARG FEDORA_VERSION=41
+ARG FEDORA_VERSION=latest
 
 FROM ${BASE_IMAGE}:${FEDORA_VERSION}
 
-# ARGs declared before FROM are not visible after it; re-declare.
-ARG FEDORA_VERSION=41
+# Re-declare for downstream step visibility
+ARG FEDORA_VERSION=latest
 
 LABEL org.opencontainers.image.title="silverblue-cachyos" \
       org.opencontainers.image.description="uBlue Silverblue with CachyOS (BORE) kernel and gaming stack"
@@ -26,16 +24,19 @@ LABEL org.opencontainers.image.title="silverblue-cachyos" \
 RUN <<'EOF'
 set -euxo pipefail
 
+# Dynamically discover the real numeric Fedora version (e.g., 44) from the base OS
+NUMERIC_VERSION=$(rpm -E %fedora)
+
 if ! rpm -q rpmfusion-free-release rpmfusion-nonfree-release >/dev/null 2>&1; then
     rpm-ostree install \
-        "https://rpmfusion.org{FEDORA_VERSION}.noarch.rpm" \
-        "https://rpmfusion.org{FEDORA_VERSION}.noarch.rpm"
+        "https://rpmfusion.org{NUMERIC_VERSION}.noarch.rpm" \
+        "https://rpmfusion.org{NUMERIC_VERSION}.noarch.rpm"
 fi
 
-# CachyOS kernel repo (bieszczaders/kernel-cachyos COPR)
+# Fetch the CachyOS kernel repo using the correct numeric variable layout
 curl -fsSL --retry 3 \
     -o /etc/yum.repos.d/bieszczaders-kernel-cachyos.repo \
-    "https://fedorainfracloud.org{FEDORA_VERSION}/bieszczaders-kernel-cachyos-fedora-${FEDORA_VERSION}.repo"
+    "https://fedorainfracloud.org{NUMERIC_VERSION}/bieszczaders-kernel-cachyos-fedora-${NUMERIC_VERSION}.repo"
 EOF
 
 # ------------------------------------------------------------------------------
@@ -89,13 +90,18 @@ kernel.sched_bore = 1
 EOF
 
 # ------------------------------------------------------------------------------
-# 3. Gaming stack + flatpak (Cleaned of hazardous 32-bit host dependencies)
+# 3. Gaming stack + Windows Layout extensions + flatpak
 # ------------------------------------------------------------------------------
 RUN rpm-ostree install --idempotent \
         gamemode \
         mangohud \
         steam \
-        flatpak
+        flatpak \
+        zenity \
+        gnome-extensions-app \
+        gnome-shell-extension-dash-to-panel \
+        gnome-shell-extension-arc-menu \
+        gnome-shell-extension-appindicator
 
 # System-wide Flathub remote configuration
 RUN mkdir -p /etc/flatpak/remotes.d \
@@ -103,6 +109,8 @@ RUN mkdir -p /etc/flatpak/remotes.d \
         https://flathub.org
 
 # Copy and execute the background flatpak storefront provisioner
+COPY unified-store.sh /tmp/unified-store.sh
+COPY unified-store.desktop /tmp/unified-store.desktop
 COPY setup-stores.sh /tmp/setup-stores.sh
 RUN chmod +x /tmp/setup-stores.sh && /tmp/setup-stores.sh --system --foreground && rm /tmp/setup-stores.sh
 
@@ -159,6 +167,8 @@ COPY <<'EOF' /etc/dconf/db/local.d/locks/00-no-telemetry
 /org/gnome/online-accounts/whitelisted-providers
 EOF
 
+# Inject your custom Windows-style taskbar and single app store configuration
+COPY 01-desktop-defaults /etc/dconf/db/local.d/01-desktop-defaults
 RUN dconf update
 
 # ------------------------------------------------------------------------------

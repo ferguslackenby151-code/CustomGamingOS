@@ -12,7 +12,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.event.repository.name }}
-  FEDORA_VERSION: "41"
+  FEDORA_VERSION: "latest"
   ISO_ROOTFS: btrfs
   BUILDER_IMAGE: quay.io/centos-bootc/bootc-image-builder:latest
 

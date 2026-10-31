@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=System App Store
+Comment=Download any application, game, or Windows software securely
+Exec=/usr/bin/unified-store.sh
+Icon=system-software-install
+Terminal=false
+Categories=System;Settings;

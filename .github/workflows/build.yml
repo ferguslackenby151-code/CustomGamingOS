@@ -1,4 +1,4 @@
-name: Build, sign and make ISO
+name: Production OS Compilation Run
 
 on:
   push:

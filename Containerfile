@@ -17,18 +17,13 @@ LABEL org.opencontainers.image.title="silverblue-cachyos" \
       org.opencontainers.image.description="uBlue Silverblue with CachyOS (BORE) kernel and gaming stack"
 
 # ------------------------------------------------------------------------------
-# 1. Repositories: Fetch the CachyOS kernel repo directly
+# 1. Repositories: Safely enable the official CachyOS kernel COPR repo
 # ------------------------------------------------------------------------------
 RUN <<'EOF'
 set -euxo pipefail
 
-# Discover the numeric version inside the container environment
-NUMERIC_VERSION=$(rpm -E %fedora)
-
-# Fetch the CachyOS kernel repo using the correct numeric variable layout
-curl -fsSL --retry 3 \
-    -o /etc/yum.repos.d/bieszczaders-kernel-cachyos.repo \
-    "https://fedorainfracloud.org{NUMERIC_VERSION}/bieszczaders-kernel-cachyos-fedora-${NUMERIC_VERSION}.repo"
+# Enable the repository natively without typing any dangerous web links
+dnf copr enable -y bieszczaders/kernel-cachyos
 EOF
 
 # ------------------------------------------------------------------------------
@@ -73,7 +68,6 @@ DRACUT_NO_XATTR=1 dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v
 chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
 EOF
 
-# BORE is the default scheduler in kernel-cachyos; pin the sysctl explicitly.
 COPY <<'EOF' /usr/lib/sysctl.d/70-bore.conf
 # BORE (Burst-Oriented Response Enhancer) scheduler
 kernel.sched_bore = 1
@@ -93,12 +87,10 @@ RUN rpm-ostree install --idempotent \
         gnome-shell-extension-arc-menu \
         gnome-shell-extension-appindicator
 
-# System-wide Flathub remote configuration
 RUN mkdir -p /etc/flatpak/remotes.d \
  && curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
         https://flathub.org
 
-# Copy and execute the background flatpak storefront provisioner
 COPY unified-store.sh /tmp/unified-store.sh
 COPY unified-store.desktop /tmp/unified-store.desktop
 COPY setup-stores.sh /tmp/setup-stores.sh
@@ -172,3 +164,4 @@ ostree container commit
 EOF
 
 RUN if command -v bootc >/dev/null 2>&1; then bootc container lint; fi
+

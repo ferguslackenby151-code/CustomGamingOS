@@ -13,7 +13,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.event.repository.name }}
   FEDORA_VERSION: "latest"
-  ISO_ROOTFS: btrfs
+  ISO_ROOTFS: ext4
   BUILDER_IMAGE: quay.io/centos-bootc/bootc-image-builder:latest
 
 jobs:

@@ -67,10 +67,14 @@ RUN mkdir -p /etc/flatpak/remotes.d \
  && curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
         https://flathub.org
 
-COPY unified-store.sh /tmp/unified-store.sh
-COPY unified-store.desktop /tmp/unified-store.desktop
-COPY setup-stores.sh /tmp/setup-stores.sh
-RUN chmod +x /tmp/setup-stores.sh && /tmp/setup-stores.sh --system --foreground && rm /tmp/setup-stores.sh
+# Copy the store scripts into the correct system paths (do NOT run them here)
+COPY unified-store.sh /usr/bin/unified-store.sh
+RUN chmod +x /usr/bin/unified-store.sh
+COPY unified-store.desktop /usr/share/applications/unified-store.desktop
+
+# Place your setup script in a safe system profile directory so it triggers on first boot
+COPY setup-stores.sh /etc/profile.d/setup-stores.sh
+RUN chmod +x /etc/profile.d/setup-stores.sh
 
 # ------------------------------------------------------------------------------
 # 4. Local-only user accounts (Locks out online directory integrations)

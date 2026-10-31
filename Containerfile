@@ -39,6 +39,7 @@ curl -fsSL --retry 3 \
     "https://fedorainfracloud.org{NUMERIC_VERSION}/bieszczaders-kernel-cachyos-fedora-${NUMERIC_VERSION}.repo"
 EOF
 
+
 # ------------------------------------------------------------------------------
 # 2. Swap the stock Fedora kernel for kernel-cachyos (BORE scheduler built in)
 # ------------------------------------------------------------------------------

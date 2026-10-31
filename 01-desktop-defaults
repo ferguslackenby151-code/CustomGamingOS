@@ -1,0 +1,11 @@
+[org/gnome/shell]
+enabled-extensions=['dash-to-panel@://github.com', 'arcmenu@arcmenu.com', 'appindicatorsupport@://gmail.com']
+favorite-apps=['unified-store.desktop']
+
+[org/gnome/shell/extensions/dash-to-panel]
+panel-position='BOTTOM'
+panel-sizes='{"0":48}'
+taskbar-locked=true
+
+[org/gnome/shell/extensions/arcmenu]
+menu-layout='Redmond'

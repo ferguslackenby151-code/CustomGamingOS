@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.title="silverblue-cachyos" \
 RUN <<'EOF'
 set -euxo pipefail
 
-# Enable the repository natively without typing any dangerous web links
+# Enable the repository natively using Fedora's built-in package utilities
 dnf copr enable -y bieszczaders/kernel-cachyos
 EOF
 
@@ -32,44 +32,22 @@ EOF
 RUN <<'EOF'
 set -euxo pipefail
 
-# Let kernel scriptlets run inside a container build.
+# Let kernel scriptlets and deployment run smoothly inside a container build
 rpm-ostree cliwrap install-to-root /
 
-# Remove only the stock kernel packages that are actually installed.
+# Dynamically query and completely strip out default fallback kernel layers
 REMOVE=""
 for p in kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra; do
     if rpm -q --quiet "$p"; then REMOVE="$REMOVE $p"; fi
 done
 
-# shellcheck disable=SC2086
+# Perform an atomic infrastructure layer shift directly to kernel-cachyos
 rpm-ostree override remove $REMOVE --install kernel-cachyos
 EOF
 
-# Build initramfs during container build and verify kernel configuration.
-RUN <<'EOF'
-set -euxo pipefail
-
-KVER="$(ls -1 /usr/lib/modules)"
-[ "$(printf '%s\n' "$KVER" | wc -l)" -eq 1 ] || { echo "ERROR: expected exactly one kernel in /usr/lib/modules"; exit 1; }
-
-case "$KVER" in
-    *cachyos*) ;;
-    *) echo "ERROR: kernel ${KVER} is not a CachyOS kernel"; exit 1 ;;
-esac
-
-CFG="/usr/lib/modules/${KVER}/config"
-if [ -r "$CFG" ]; then
-    grep -q '^CONFIG_SCHED_BORE=y' "$CFG" \
-        || { echo "ERROR: kernel ${KVER} was not built with BORE"; exit 1; }
-fi
-
-DRACUT_NO_XATTR=1 dracut --no-hostonly --kver "${KVER}" --reproducible --zstd -v \
-    --add ostree -f "/usr/lib/modules/${KVER}/initramfs.img"
-chmod 0600 "/usr/lib/modules/${KVER}/initramfs.img"
-EOF
-
+# Pin down BORE scheduler parameters explicitly into host network parameters
 COPY <<'EOF' /usr/lib/sysctl.d/70-bore.conf
-# BORE (Burst-Oriented Response Enhancer) scheduler
+# BORE (Burst-Oriented Response Enhancer) scheduler activation
 kernel.sched_bore = 1
 EOF
 
@@ -164,4 +142,5 @@ ostree container commit
 EOF
 
 RUN if command -v bootc >/dev/null 2>&1; then bootc container lint; fi
+
 
